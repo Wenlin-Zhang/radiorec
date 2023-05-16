@@ -13,7 +13,13 @@ def interleave_complex(tensor: np.ndarray) -> np.ndarray:
         transformed (:class:`numpy.ndarray`):
             Interleaved vectors. (vector_length * 2)
     """
-    new_tensor = tensor[:, 0] + 1j * tensor[:, 1]
+    if tensor.shape[1] == 2:
+        new_tensor = tensor[:, 0] + 1j * tensor[:, 1]
+    elif tensor.shape[1] == 1:
+        new_tensor = tensor[:, 0]
+    else:
+        print('tensor 2 dim is neither 2 (i/q data) nor 1 (real data)')
+        return None
     return new_tensor
 
 
