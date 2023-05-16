@@ -63,10 +63,14 @@ class FastAdaptiveMaxPool(torch.nn.Module):
         return x.amax(-1, keepdim=not self.flatten)
 
 
-def create_resnet(num_classes, in_chans, name='resnet18', pretrained=False):
+def create_resnet_1d(num_classes, in_chans, name='resnet18', pretrained=False):
     model = timm.create_model(name, pretrained=pretrained, num_classes=num_classes, in_chans=in_chans)
     replace_conv(model)
     replace_bn(model)
     replace_mp(model)
     model.global_pool = FastAdaptiveMaxPool()
+    return model
+
+def create_resnet_2d(num_classes, in_chans, name='resnet18', pretrained=False):
+    model = timm.create_model(name, pretrained=pretrained, num_classes=num_classes, in_chans=in_chans)
     return model

@@ -13,19 +13,19 @@ class SignalFileSet:
     def __init__(self, root_dir = None, suffix = None):
         if root_dir is None:
             self.root_dir = ''   # root directory
-            self.labels = []     # label array
-            self.file_dict = {}  # file dictionary  (file_name, label_index)
-            self.label_dict = {} # label dictionary (label, label_index)
+            self.class_list = []   # class array
+            self.file_dict = {}  # file dictionary  (file_name, class_index)
+            self.class_dict = {} # class dictionary (class, class_index)
             return
 
         self.root_dir = root_dir
-        self.labels = [subdir for subdir in os.listdir(root_dir)
+        self.class_list = [subdir for subdir in os.listdir(root_dir)
                     if os.path.isdir(os.path.join(root_dir, subdir))]
-        self.labels.sort()
-        self.label_dict = {label:index for index, label in enumerate(self.labels)}
+        self.class_list.sort()
+        self.class_dict = {label:index for index, label in enumerate(self.class_list)}
 
         self.file_dict = {}
-        for index, label in enumerate(self.labels):
+        for index, label in enumerate(self.class_list):
             subdir = os.path.join(root_dir, label)
             files = [file for file in os.listdir(subdir)
                      if os.path.isfile(os.path.join(subdir, file)) and file.endswith(suffix)]
@@ -35,7 +35,7 @@ class SignalFileSet:
     def write_csv(self, csv_file_path: str):
         file_list = list(self.file_dict.keys())
         label_list = list(self.file_dict.values())
-        label_list = map(lambda index: self.labels[index], label_list)
+        label_list = map(lambda index: self.class_list[index], label_list)
         df = pd.DataFrame({'file': file_list, 'label': label_list})
         df.to_csv(csv_file_path, header = True, index = None)
 
@@ -46,18 +46,18 @@ class SignalFileSet:
             self.root_dir = root_dir
 
         df = pd.read_csv(csv_file_path, index_col='file', dtype = {'label': str})
-        self.labels = df['label'].unique().tolist()
-        self.labels.sort()
-        self.label_dict = {label:index for index, label in enumerate(self.labels)}
+        self.class_list = df['label'].unique().tolist()
+        self.class_list.sort()
+        self.class_dict = {label:index for index, label in enumerate(self.class_list)}
 
-        df['label'] = df['label'].map(self.label_dict)
+        df['label'] = df['label'].map(self.class_dict)
         self.file_dict = df['label'].to_dict()
 
-    def print(self):
+    def print_info(self):
         print(f'data path: {self.root_dir}')
-        print(f'labels: {self.labels}')
+        print(f'classes: {self.class_list}')
         c = Counter(self.file_dict.values())
-        label_count = {self.labels[index]: count for index, count in c.items()}
+        label_count = {self.class_list[index]: count for index, count in c.items()}
         print(label_count)
 
 @dataclass
@@ -140,6 +140,8 @@ class SignalDataSet(torch.utils.data.Dataset):
         self.config = config
         self.transform = transform
         self.random_generator = np.random.RandomState(seed)
+        self.class_list = self.fileset.class_list
+        self.class_dict = self.fileset.class_dict
         self.data, self.labels = generate_dataset(fileset, config)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
@@ -152,21 +154,26 @@ class SignalDataSet(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
+    def print_info(self):
+        print(f'labels: {self.class_list}')
+        c = Counter(self.labels)
+        label_count = {self.class_list[index]: count for index, count in c.items()}
+        print(label_count)
+
 
 def test():
     sigFileSet = SignalFileSet('test', 'bin')
-    sigFileSet.print()
+    sigFileSet.print_info()
 
     sigFileSet.write_csv('test/index.csv')
 
     sigFileSet2 = SignalFileSet()
     sigFileSet2.read_csv('test/index.csv')
-    sigFileSet2.print()
+    sigFileSet2.print_info()
 
     conf = SignalFileConfig()
-    data, labels = generate_dataset(sigFileSet2, conf)
-    print(data.shape)
-    print(labels.shape)
+    dataset = SignalDataSet(sigFileSet2, conf)
+    dataset.print_info()
 
 if __name__ == "__main__":
     test()
