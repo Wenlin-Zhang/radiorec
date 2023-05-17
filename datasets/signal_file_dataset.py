@@ -57,6 +57,7 @@ class SignalFileSet:
     def print_info(self):
         print(f'data path: {self.root_dir}')
         print(f'classes: {self.class_list}')
+        print(f'class dict: {self.class_dict}')
         c = Counter(self.file_dict.values())
         label_count = {self.class_list[index]: count for index, count in c.items()}
         print(label_count)
@@ -141,9 +142,9 @@ class SignalDataSet(torch.utils.data.Dataset):
         self.config = config
         self.transform = transform
         self.random_generator = np.random.RandomState(seed)
-        self.class_list = self.fileset.class_list
-        self.class_dict = self.fileset.class_dict
-        self.data, self.labels = generate_dataset(fileset, config)
+        self.class_list = self.fileset.class_list   # need save
+        self.class_dict = self.fileset.class_dict   # need save
+        self.data, self.labels = generate_dataset(fileset, config)  # need save
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         x = self.data[index]
@@ -156,21 +157,27 @@ class SignalDataSet(torch.utils.data.Dataset):
         return len(self.data)
 
     def print_info(self):
-        print(f'labels: {self.class_list}')
+        print(f'class list: {self.class_list}')
+        print(f'class dict: {self.class_dict}')
         c = Counter(self.labels)
-        label_count = {self.class_list[index]: count for index, count in c.items()}
-        print(label_count)
+        seg_count = {self.class_list[index]: count for index, count in c.items()}
+        print(f'seg count for each class: {seg_count}')
 
+    def save(self):
+        return
+
+    def load(self):
+        return
 
 def test():
     sigFileSet = SignalFileSet('test', 'bin')
-    sigFileSet.print_info()
+    #sigFileSet.print_info()
 
     sigFileSet.write_csv('test/index.csv')
 
     sigFileSet2 = SignalFileSet()
     sigFileSet2.read_csv('test/index.csv')
-    sigFileSet2.print_info()
+    #sigFileSet2.print_info()
 
     conf = SignalFileConfig()
     dataset = SignalDataSet(sigFileSet2, conf)
