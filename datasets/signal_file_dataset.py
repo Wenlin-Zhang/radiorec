@@ -27,6 +27,7 @@ class SignalFileSet:
         self.file_dict = {}
         for index, label in enumerate(self.class_list):
             subdir = os.path.join(root_dir, label)
+
             files = [file for file in os.listdir(subdir)
                      if os.path.isfile(os.path.join(subdir, file)) and file.endswith(suffix)]
             for file in files:
