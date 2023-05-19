@@ -1,5 +1,7 @@
 import os
 import os.path
+
+import numpy
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
@@ -7,6 +9,7 @@ from collections import Counter
 from numpy.lib.stride_tricks import as_strided
 import torch
 from typing import Tuple, Optional, Callable, Any
+import h5py
 
 
 class SignalFileSet:
@@ -138,12 +141,19 @@ class SignalDataSet(torch.utils.data.Dataset):
         seed: Optional[int] = None,
     ):
         super(SignalDataSet, self).__init__()
-        self.fileset = fileset
-        self.config = config
+        if fileset == None:
+            self.fileset = None
+            self.fs = 1
+            self.data = None
+            self.labels = None
+            self.transform = None
+            self.random_generator = np.random.RandomState()
+            return
         self.transform = transform
         self.random_generator = np.random.RandomState(seed)
-        self.class_list = self.fileset.class_list   # need save
-        self.class_dict = self.fileset.class_dict   # need save
+        self.class_list = fileset.class_list   # need save
+        self.class_dict = fileset.class_dict   # need save
+        self.fs = config.fs
         self.data, self.labels = generate_dataset(fileset, config)  # need save
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
@@ -163,11 +173,23 @@ class SignalDataSet(torch.utils.data.Dataset):
         seg_count = {self.class_list[index]: count for index, count in c.items()}
         print(f'seg count for each class: {seg_count}')
 
-    def save(self):
-        return
+    def save(self, fname: str):
+        hdf5_file = h5py.File(fname, "w")
+        hdf5_file['class_list'] = self.class_list
+        hdf5_file['fs'] = [self.fs]
+        hdf5_file['data'] = self.data
+        hdf5_file['labels'] = self.labels
+        hdf5_file.close()
 
-    def load(self):
-        return
+    def load(self, fname: str):
+        hdf5_file = h5py.File(fname, "r")
+        self.class_list = [name.decode('utf-8') for name in hdf5_file['class_list']]
+        self.class_dict = {label:index for index, label in enumerate(self.class_list)}
+        self.fs = hdf5_file['fs'][0]
+        self.data = numpy.array(hdf5_file['data'])
+        self.labels = numpy.array(hdf5_file['labels'])
+        hdf5_file.close()
+
 
 def test():
     sigFileSet = SignalFileSet('test', 'bin')
