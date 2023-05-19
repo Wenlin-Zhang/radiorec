@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from collections import Counter
 from numpy.lib.stride_tricks import as_strided
 import torch
+import torchaudio
 from typing import Tuple, Optional, Callable, Any
 import h5py
 
@@ -16,7 +17,7 @@ class SignalFileSet:
     def __init__(self, root_dir = None, suffix = None):
         if root_dir is None:
             self.root_dir = ''   # root directory
-            self.class_list = []   # class array
+            self.class_list = [] # class array
             self.file_dict = {}  # file dictionary  (file_name, class_index)
             self.class_dict = {} # class dictionary (class, class_index)
             return
@@ -67,10 +68,10 @@ class SignalFileSet:
 
 @dataclass
 class SignalFileConfig:
-    fs : int = 50000     # sample rate
-    seg_len: int = 20  # segment length in ms
-    seg_shift: int = 10     # segment shift in ms (default = seg_len, no overlap)
-    max_num: int = 1000   # max segments per file
+    fs : int = 50000         # sample rate
+    seg_len: int = 20        # segment length in ms
+    seg_shift: int = 10      # segment shift in ms (default = seg_len, no overlap)
+    max_num: int = 1000      # max segments per file
     is_complex: bool = True  # if IQ data
     energy_threshold: float = 10   # energy threshold, < 0: no filter
 
@@ -90,7 +91,16 @@ def filter_with_energy(x, y=None, energy_threshold=6.0):  # x: (cnt, seg_len, 2)
 
 
 def get_segment_data(filepath:str, seg_len, seg_shift, max_num, step = 2):
-    data = np.fromfile(filepath, dtype="float32")
+    if filepath.lower().endswith('wav'): # read wav file using torchaudio
+        data, sample_rate = torchaudio.load(filepath) # TODO: need to check the sample_rate
+        num_channels, _ = data.shape
+        if step != num_channels:
+            print(f'Warning: file channel is {num_channels}, but step is {step}.')
+            step = num_channels
+        data = data.transpose(0, 1)
+        data = data.numpy().reshape(-1)
+    else:
+        data = np.fromfile(filepath, dtype="float32")
     file_len = len(data)
     if file_len < seg_len * step:
         return None
