@@ -11,7 +11,7 @@ import torch
 import torchaudio
 from typing import Tuple, Optional, Callable, Any
 import h5py
-
+import random
 
 class SignalFileSet:
     def __init__(self, root_dir = None, suffix = None):
@@ -105,16 +105,36 @@ def get_segment_data(filepath:str, seg_len, seg_shift, max_num, step = 2):
     if file_len < seg_len * step:
         return None
     if seg_shift == seg_len:
-        count = int(min(file_len // (step * seg_len), max_num))
+        #count = min(int(file_len // (step * seg_len)), max_num)
+        #data = data[:count * seg_len * step]
+        #data = data.reshape((count, seg_len, step))
+        count = int(file_len // (step * seg_len))
         data = data[:count * seg_len * step]
         data = data.reshape((count, seg_len, step))
+        if (max_num < count):
+            index = list(range(count))
+            random.shuffle(index)
+            sel_index = index[:max_num]
+            data = data[sel_index]
+
     else:
-        count = int(min((file_len - seg_len * step) // (step * seg_shift) + 1, max_num))
+        #count = int(min((file_len - seg_len * step) // (step * seg_shift) + 1, max_num))
+        #data = data[: ((count - 1) * seg_shift + seg_len) * step]
+        #data = as_strided(data,
+        #                  shape=(count, seg_len * step),
+        #                  strides=(data.itemsize * seg_shift * step, data.itemsize))
+        #data = data.reshape((count, seg_len, step))
+        count = (file_len - seg_len * step) // (step * seg_shift) + 1
         data = data[: ((count - 1) * seg_shift + seg_len) * step]
         data = as_strided(data,
                           shape=(count, seg_len * step),
                           strides=(data.itemsize * seg_shift * step, data.itemsize))
         data = data.reshape((count, seg_len, step))
+        if max_num < count:
+            index = list(range(count))
+            random.shuffle(index)
+            sel_index = index[:max_num]
+            data = data[sel_index]
     return data
 
 

@@ -23,7 +23,7 @@ class InterleaveComplex(SignalTransform):
 
 
 class InterleaveTo2D(SignalTransform):
-    """ Takes a vector of complex IQ samples and converts two channels of real 
+    """ Takes a vector of interleave IQ samples and converts two channels of real 
     and imaginary parts
 
     Example:
@@ -36,6 +36,22 @@ class InterleaveTo2D(SignalTransform):
 
     def __call__(self, data: Any) -> Any:
         data = F.interleave_to_2d(data)
+        return data
+
+class ComplexTo2D(SignalTransform):
+    """ Takes a vector of complex IQ samples and converts two channels of real 
+    and imaginary parts
+
+    Example:
+        >>> import transforms as ST
+        >>> transform = ST.InterleaveTo2D()
+
+    """
+    def __init__(self):
+        super(ComplexTo2D, self).__init__()
+
+    def __call__(self, data: Any) -> Any:
+        data = F.complex_to_2d(data)
         return data
 
 

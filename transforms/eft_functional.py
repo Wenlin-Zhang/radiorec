@@ -38,6 +38,23 @@ def interleave_to_2d(tensor: np.ndarray) -> np.ndarray:
     new_tensor = np.transpose(tensor)
     return new_tensor
 
+def complex_to_2d(tensor: np.ndarray) -> np.ndarray:
+    """Converts complex IQ to two channels representing real and imaginary
+
+    Args:
+        tensor (:class:`numpy.ndarray`):
+            (batch_size, vector_length, ...)-sized tensor.
+
+    Returns:
+        transformed (:class:`numpy.ndarray`):
+            Expanded vectors
+    """
+
+    # new_tensor = np.stack(tensor.real, tensor.imag)
+    new_tensor = np.zeros((2, tensor.shape[0]), dtype=np.float64)
+    new_tensor[0] = np.real(tensor).astype(np.float64)
+    new_tensor[1] = np.imag(tensor).astype(np.float64)
+    return new_tensor
 
 def real(tensor: np.ndarray) -> np.ndarray:
     """Converts interleaved IQ data to a real-only vector

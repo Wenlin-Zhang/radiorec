@@ -1,9 +1,52 @@
 import numpy as np
 from scipy import signal as sp
-from typing import Optional, Any, Union, List
+from typing import Optional, Any, Union, List, Literal, Optional
 from transforms.transforms import SignalTransform
-from transforms.functional import NumericParameter, FloatParameter
+from transforms.functional import NumericParameter, FloatParameter, IntParameter
 from transforms.functional import to_distribution, uniform_continuous_distribution, uniform_discrete_distribution
+import transforms.functional as F
+
+class Normalize(SignalTransform):
+    """Normalize a IQ vector with mean and standard deviation.
+
+    Args:
+        norm :obj:`string`:
+            Type of norm with which to normalize
+
+        flatten :obj:`flatten`:
+            Specifies if the norm should be calculated on the flattened
+            representation of the input tensor
+
+    Example:
+        >>> import torchsig.transforms as ST
+        >>> transform = ST.Normalize(norm=2) # normalize by l2 norm
+        >>> transform = ST.Normalize(norm=1) # normalize by l1 norm
+        >>> transform = ST.Normalize(norm=2, flatten=True) # normalize by l1 norm of the 1D representation
+
+    """
+
+    def __init__(
+        self,
+        norm: Optional[Union[int, float, Literal["fro", "nuc"]]] = 2,
+        flatten: bool = False,
+    ) -> None:
+        super(Normalize, self).__init__()
+        self.norm = norm
+        self.flatten = flatten
+        self.string: str = (
+            self.__class__.__name__
+            + "("
+            + "norm={}, ".format(norm)
+            + "flatten={}".format(flatten)
+            + ")"
+        )
+
+    def __repr__(self) -> str:
+        return self.string
+
+    def __call__(self, data: np.ndarray) -> np.ndarray:
+        data = F.normalize(data, self.norm, self.flatten)
+        return data
 
 
 def freq_shift(tensor: np.ndarray, f_shift: float) -> np.ndarray:
@@ -181,3 +224,210 @@ class RandomPhaseShift(SignalTransform):
         phases = self.phase_offset()
         data = phase_offset(data, phases*np.pi)
         return data
+
+class SpectrogramPatchShuffle(SignalTransform):
+    """Randomly shuffle multiple local regions of samples.
+
+    Transform is loosely based on
+    `PatchShuffle Regularization <https://arxiv.org/pdf/1707.07103.pdf>`_.
+
+    Args:
+         patch_size (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            patch_size sets the size of each patch to shuffle
+            * If Callable, produces a sample by calling patch_size()
+            * If int or float, patch_size is fixed at the value provided
+            * If list, patch_size is any element in the list
+            * If tuple, patch_size is in range of (tuple[0], tuple[1])
+
+        shuffle_ratio (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            shuffle_ratio sets the ratio of the patches to shuffle
+            * If Callable, produces a sample by calling shuffle_ratio()
+            * If int or float, shuffle_ratio is fixed at the value provided
+            * If list, shuffle_ratio is any element in the list
+            * If tuple, shuffle_ratio is in range of (tuple[0], tuple[1])
+
+    """
+
+    def __init__(
+        self,
+        patch_size: NumericParameter = (2, 16),
+        shuffle_ratio: FloatParameter = (0.01, 0.10),
+    ) -> None:
+        super(SpectrogramPatchShuffle, self).__init__()
+        self.patch_size = to_distribution(patch_size, self.random_generator)
+        self.shuffle_ratio = to_distribution(shuffle_ratio, self.random_generator)
+        self.string = (
+            self.__class__.__name__
+            + "("
+            + "patch_size={}, ".format(patch_size)
+            + "shuffle_ratio={}".format(shuffle_ratio)
+            + ")"
+        )
+
+    def __repr__(self) -> str:
+        return self.string
+
+    def __call__(self, data: Any) -> Any:
+        patch_size = int(self.patch_size())
+        shuffle_ratio = self.shuffle_ratio()
+
+        output: np.ndarray = F.spec_patch_shuffle(
+            data,
+            patch_size,
+            shuffle_ratio,
+        )
+        return output
+
+class AddNoise(SignalTransform):
+    """Add random AWGN at specified power levels
+
+    Note:
+        Differs from the TargetSNR() in that this transform adds
+        noise at a specified power level, whereas TargetSNR()
+        assumes a basebanded signal and adds noise to achieve a specified SNR
+        level for the signal of interest. This transform,
+        AddNoise() is useful for simply adding a randomized
+        level of noise to either a narrowband or wideband input.
+
+    Args:
+        noise_power_db (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            Defined as 10*log10(np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2)) if in dB,
+            np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2) if linear.
+
+            * If Callable, produces a sample by calling target_snr()
+            * If int or float, target_snr is fixed at the value provided
+            * If list, target_snr is any element in the list
+            * If tuple, target_snr is in range of (tuple[0], tuple[1])
+
+        input_noise_floor_db (:obj:`float`):
+            The noise floor of the input data in dB
+
+        linear (:obj:`bool`):
+            If True, target_snr and signal_power is on linear scale not dB.
+
+    Example:
+        >>> import torchsig.transforms as ST
+        >>> # Added AWGN power range is (-40, -20) dB
+        >>> transform = ST.AddNoise((-40, -20))
+
+    """
+
+    def __init__(
+        self,
+        noise_power_db: NumericParameter = uniform_continuous_distribution(-80, -60),
+        input_noise_floor_db: float = 0.0,
+        linear: bool = False,
+        **kwargs,
+    ) -> None:
+        super(AddNoise, self).__init__(**kwargs)
+        self.noise_power_db = to_distribution(noise_power_db, self.random_generator)
+        self.input_noise_floor_db = input_noise_floor_db
+        self.linear = linear
+        self.string = (
+            self.__class__.__name__
+            + "("
+            + "noise_power_db={}, ".format(noise_power_db)
+            + "input_noise_floor_db={}, ".format(input_noise_floor_db)
+            + "linear={}".format(linear)
+            + ")"
+        )
+
+    def __repr__(self) -> str:
+        return self.string
+
+    def __call__(self, data: Any) -> Any:
+        noise_power_db = self.noise_power_db(size=data.shape[0])
+        noise_power_db = 10 * np.log10(noise_power_db) if self.linear else noise_power_db
+        output: np.ndarray = F.awgn(data, noise_power_db)
+        return output
+
+
+class TimeVaryingNoise(SignalTransform):
+    """Add time-varying random AWGN at specified input parameters
+
+    Args:
+        noise_power_db_low (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            Defined as 10*log10(np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2)) if in dB,
+            np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2) if linear.
+            * If Callable, produces a sample by calling noise_power_db_low()
+            * If int or float, noise_power_db_low is fixed at the value provided
+            * If list, noise_power_db_low is any element in the list
+            * If tuple, noise_power_db_low is in range of (tuple[0], tuple[1])
+
+        noise_power_db_high (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            Defined as 10*log10(np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2)) if in dB,
+            np.mean(np.abs(x)**2)/np.mean(np.abs(n)**2) if linear.
+            * If Callable, produces a sample by calling noise_power_db_low()
+            * If int or float, noise_power_db_low is fixed at the value provided
+            * If list, noise_power_db_low is any element in the list
+            * If tuple, noise_power_db_low is in range of (tuple[0], tuple[1])
+
+        inflections (:py:class:`~Callable`, :obj:`int`, :obj:`float`, :obj:`list`, :obj:`tuple`):
+            Number of inflection points in time-varying noise
+            * If Callable, produces a sample by calling inflections()
+            * If int or float, inflections is fixed at the value provided
+            * If list, inflections is any element in the list
+            * If tuple, inflections is in range of (tuple[0], tuple[1])
+
+        random_regions (:py:class:`~Callable`, :obj:`bool`, :obj:`list`, :obj:`tuple`):
+            If inflections > 0, random_regions specifies whether each
+            inflection point should be randomly selected or evenly divided
+            among input data
+            * If Callable, produces a sample by calling random_regions()
+            * If bool, random_regions is fixed at the value provided
+            * If list, random_regions is any element in the list
+
+        linear (:obj:`bool`):
+            If True, powers input are on linear scale not dB.
+
+    """
+
+    def __init__(
+        self,
+        noise_power_db_low: NumericParameter = uniform_continuous_distribution(-80, -60),
+        noise_power_db_high: NumericParameter = uniform_continuous_distribution(-40, -20),
+        inflections: IntParameter = uniform_continuous_distribution(0, 10),
+        random_regions: Union[List, bool] = True,
+        linear: bool = False,
+        **kwargs,
+    ) -> None:
+        super(TimeVaryingNoise, self).__init__(**kwargs)
+        self.noise_power_db_low = to_distribution(noise_power_db_low)
+        self.noise_power_db_high = to_distribution(noise_power_db_high)
+        self.inflections = to_distribution(inflections)
+        self.random_regions = to_distribution(random_regions)
+        self.linear = linear
+        self.string = (
+            self.__class__.__name__
+            + "("
+            + "noise_power_db_low={}, ".format(noise_power_db_low)
+            + "noise_power_db_high={}, ".format(noise_power_db_high)
+            + "inflections={}, ".format(inflections)
+            + "random_regions={}, ".format(random_regions)
+            + "linear={}".format(linear)
+            + ")"
+        )
+
+    def __repr__(self) -> str:
+        return self.string
+
+    def __call__(self, data: Any) -> Any:
+        noise_power_db_low = self.noise_power_db_low()
+        noise_power_db_high = self.noise_power_db_high()
+        noise_power_db_low = (
+            10 * np.log10(noise_power_db_low) if self.linear else noise_power_db_low
+        )
+        noise_power_db_high = (
+            10 * np.log10(noise_power_db_high) if self.linear else noise_power_db_high
+        )
+        inflections = int(self.inflections())
+        random_regions = self.random_regions()
+
+        output: np.ndarray = F.time_varying_awgn(
+            data,
+            noise_power_db_low,
+            noise_power_db_high,
+            inflections,
+            random_regions,
+        )
+        return output
